@@ -1,0 +1,12 @@
+node_modules/
+workspace/
+
+.env
+.env.*
+!.env.example
+
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
