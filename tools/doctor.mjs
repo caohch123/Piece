@@ -28,5 +28,7 @@ line("Whisper 模型", hasModel, hasModel ? (model || modelDir) : "请设置 HF_
 
 const browser = env.HYPERFRAMES_BROWSER_PATH;
 line("浏览器路径", !browser || fs.existsSync(browser), browser ? (fs.existsSync(browser) ? browser : "配置路径不存在") : "未显式配置，HyperFrames 将使用其默认浏览器");
-console.log(env.DEEPSEEK_API_KEY ? "✓ DeepSeek：已配置（不显示密钥）" : "• DeepSeek：未配置，将使用启发式分镜");
+console.log(env.DEEPSEEK_API_KEY
+  ? "✓ DeepSeek 环境变量：已配置（不显示密钥）；网页中也可切换其他模型"
+  : "• 模型 API：可在网页中配置；未配置时使用启发式分镜");
 process.exitCode = failed ? 1 : 0;

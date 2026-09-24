@@ -6,6 +6,7 @@ import { randomBytes, createHmac, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createJob, getJob, listJobs, publicJob, publicDraft, approveJob } from "./lib/jobs.mjs";
 import { run } from "./lib/transcribe.mjs";
+import { LlmSettings, chatCompletion } from "./lib/llm.mjs";
 
 const APP_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(APP_DIR, "public");
@@ -42,6 +43,7 @@ purgeStaleUploads();
 setInterval(purgeStaleUploads, 60 * 60 * 1000).unref();
 if (!fs.existsSync(SECRET_FILE)) fs.writeFileSync(SECRET_FILE, randomBytes(32), { mode: 0o600, flag: "wx" });
 const secret = fs.readFileSync(SECRET_FILE);
+const llmSettings = new LlmSettings(WORKSPACE, secret);
 
 class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -180,6 +182,10 @@ async function upload(req, res, owner) {
 
 const server = http.createServer(async (req, res) => {
   try {
+    if (["127.0.0.1", "localhost", "::1"].includes(HOST) &&
+        !/^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d{1,5})?$/.test(req.headers.host || "")) {
+      throw new HttpError(403, "仅允许通过本机地址访问");
+    }
     const url = new URL(req.url, "http://localhost");
     const p = url.pathname;
     const owner = session(req, res);
@@ -194,6 +200,20 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "PUT" || req.method === "POST") checkOrigin(req);
 
+    if (p === "/api/settings/llm" && req.method === "GET") return sendJson(res, 200, llmSettings.public(owner));
+    if (p === "/api/settings/llm" && req.method === "PUT") {
+      try { return sendJson(res, 200, llmSettings.save(owner, await readJson(req, 4096))); }
+      catch (error) { if (error.code) throw error; throw new HttpError(400, error.message); }
+    }
+    if (p === "/api/settings/llm/test" && req.method === "POST") {
+      const config = llmSettings.current(owner);
+      if (!config) throw new HttpError(400, "请先保存模型 API 配置");
+      try {
+        const reply = await chatCompletion(config, [{ role: "user", content: "请只回复 OK" }]);
+        return sendJson(res, 200, { ok: true, model: config.model, reply: reply.slice(0, 100) });
+      } catch (error) { throw new HttpError(502, error.message); }
+    }
+
     if (req.method === "PUT" && p === "/api/upload") return await upload(req, res, owner);
 
     if (p === "/api/jobs" && req.method === "GET") return sendJson(res, 200, { jobs: listJobs(owner) });
@@ -202,7 +222,7 @@ const server = http.createServer(async (req, res) => {
       if (data.mode === "prompt") {
         const prompt = typeof data.prompt === "string" ? data.prompt.trim() : "";
         if (!prompt || prompt.length > 2000) throw new HttpError(400, "提示词长度必须为 1–2000 字");
-        const job = createJob({ owner, mode: "prompt", prompt });
+        const job = createJob({ owner, mode: "prompt", prompt, llm: llmSettings.current(owner) });
         return sendJson(res, 200, { id: job.id });
       }
       if (data.mode === "video") {
@@ -210,7 +230,7 @@ const server = http.createServer(async (req, res) => {
         const item = uploads.get(data.uploadId);
         if (!item || item.owner !== owner || !fs.existsSync(item.file)) throw new HttpError(404, "上传文件不存在");
         uploads.delete(data.uploadId);
-        const job = createJob({ owner, mode: "video", videoPath: item.file, videoName: "input" + item.ext, name: item.name });
+        const job = createJob({ owner, mode: "video", videoPath: item.file, videoName: "input" + item.ext, name: item.name, llm: llmSettings.current(owner) });
         return sendJson(res, 200, { id: job.id });
       }
       throw new HttpError(400, "mode 必须是 video 或 prompt");
