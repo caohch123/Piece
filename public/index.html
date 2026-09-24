@@ -25,6 +25,7 @@
     cursor: pointer; font-size: 15px; font-weight: 700; color: #9aa8c0; text-align: center; transition: all .18s ease;
   }
   .mode.on { border-color: rgba(34,211,238,.55); background: rgba(34,211,238,.10); color: #dff8ff; }
+  button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid #6ee7f5; outline-offset: 3px; }
   .drop {
     border: 1.5px dashed rgba(255,255,255,.18); border-radius: 16px; padding: 38px 20px; text-align: center;
     color: #8e9cb4; cursor: pointer; transition: all .18s ease;
@@ -65,42 +66,64 @@
   }
   .meta { color: #7c8aa2; font-size: 13px; }
   .err { margin-top: 16px; color: #fca5a5; font-size: 14px; display: none; white-space: pre-wrap; }
+  .review, .history { margin-top: 28px; display: none; }
+  .review h2, .history h2 { font-size: 21px; margin-bottom: 12px; }
+  .review p, .history p { color: #93a0b6; font-size: 14px; line-height: 1.6; }
+  .review-grid { display: grid; gap: 12px; margin-top: 16px; }
+  .review-item { border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: rgba(255,255,255,.03); }
+  .review-item label { display: block; color: #93a0b6; font-size: 13px; margin-bottom: 7px; }
+  .review-item input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #111824; color: #eef1f8; font: inherit; }
+  .history-list { display: grid; gap: 8px; margin-top: 14px; }
+  .history-item { width: 100%; padding: 12px 14px; text-align: left; color: #eef1f8; background: rgba(255,255,255,.035); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+  .history-item:hover { border-color: rgba(34,211,238,.55); }
+  .history-item small { display: block; color: #93a0b6; margin-top: 4px; }
+  .notice { margin-top: 12px; color: #fcd34d; font-size: 13px; line-height: 1.5; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>剪辑 Agent · <span>口播视频自动成片</span></h1>
-  <p class="sub">放一段口播视频或写一句主题，Agent 会自动转写、分镜、配图解动效、加字幕和音效，输出竖屏短视频。<br/>全程无需操作，等待即可。</p>
+  <p class="sub">上传口播视频，自动转写、分镜并生成带图解、字幕和音效的竖屏短视频。转写完成后可先修改文案，再开始渲染。</p>
 
   <div class="panel">
-    <div class="modes">
-      <div class="mode on" data-mode="video">① 上传口播视频</div>
-      <div class="mode" data-mode="prompt">② 输入提示词</div>
+    <div class="modes" role="group" aria-label="生成方式">
+      <button type="button" class="mode on" data-mode="video" aria-pressed="true">① 上传口播视频</button>
+      <button type="button" class="mode" data-mode="prompt" aria-pressed="false">② 字幕动画草稿</button>
     </div>
 
     <div id="videoBox">
-      <div class="drop" id="drop">
+      <div class="drop" id="drop" role="button" tabindex="0" aria-label="选择视频文件，也可以拖放视频">
         <b>把视频拖到这里，或点击选择</b>
-        支持 mp4 / mov / mkv，建议竖屏口播
+        支持 mp4 / mov / mkv · 含音轨 · 最长 180 秒 · 不超过 800 MB
         <div class="file" id="fileName"></div>
       </div>
-      <input type="file" id="file" accept="video/*" hidden />
+      <input type="file" id="file" accept=".mp4,.mov,.mkv,video/mp4,video/quicktime,video/x-matroska" hidden />
     </div>
 
     <div id="promptBox" style="display:none">
+      <label for="prompt">动画主题或文稿</label>
       <textarea id="prompt" placeholder="例如：用 30 秒讲清楚什么是神经网络，面向完全不懂技术的普通人"></textarea>
+      <div class="notice">提示词模式目前生成无旁白的字幕动画；不会自动配音。</div>
     </div>
 
     <button class="go" id="go">开始生成</button>
-    <div class="hint">成片为 1080×1920 竖屏。渲染约 5~15 分钟（取决于视频长度），期间可以离开页面，完成后回来即可。</div>
-    <div class="err" id="err"></div>
+    <div class="hint">成片为 1080×1920 竖屏。分镜确认后渲染通常需数分钟。配置 DeepSeek 时，文稿会发送至其 API 用于规划。</div>
+    <div class="err" id="err" role="alert"></div>
   </div>
 
   <div class="prog" id="prog">
     <div class="bar"><i id="bar"></i></div>
-    <div class="stages"><span id="stage">排队中</span><span id="pct">0%</span></div>
+    <div class="stages" role="status" aria-live="polite"><span id="stage">排队中</span><span id="pct">0%</span></div>
     <div class="log" id="log"></div>
   </div>
+
+  <section class="panel review" id="review" aria-labelledby="reviewTitle">
+    <h2 id="reviewTitle">确认文案和分镜</h2>
+    <p>可修正标题和字幕。修改过的字幕会按整句显示，原有逐词高亮将取消。</p>
+    <div class="review-grid" id="reviewScenes"></div>
+    <div class="review-grid" id="reviewCaptions"></div>
+    <button type="button" class="go" id="approve">确认并开始渲染</button>
+  </section>
 
   <div class="result" id="result">
     <video id="player" controls playsinline></video>
@@ -109,124 +132,233 @@
       <span class="meta" id="meta"></span>
     </div>
   </div>
+
+  <section class="panel history" id="history" aria-labelledby="historyTitle">
+    <h2 id="historyTitle">最近任务</h2>
+    <p>任务保存在本机。点击可查看进度、待确认文案或成片。</p>
+    <div class="history-list" id="historyList"></div>
+  </section>
 </div>
 
 <script>
 let mode = "video";
 let file = null;
-let uploadId = null;
+let currentId = null;
+let stream = null;
+let retryTimer = null;
+let retryCount = 0;
+const $ = (id) => document.getElementById(id);
+
+function error(message) {
+  $("err").textContent = message;
+  $("err").style.display = message ? "block" : "none";
+}
+
+async function jsonResponse(response) {
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "请求失败");
+  return data;
+}
 
 document.querySelectorAll(".mode").forEach((el) => {
   el.onclick = () => {
     mode = el.dataset.mode;
-    document.querySelectorAll(".mode").forEach((x) => x.classList.toggle("on", x === el));
-    document.getElementById("videoBox").style.display = mode === "video" ? "" : "none";
-    document.getElementById("promptBox").style.display = mode === "prompt" ? "" : "none";
+    document.querySelectorAll(".mode").forEach((x) => {
+      x.classList.toggle("on", x === el);
+      x.setAttribute("aria-pressed", String(x === el));
+    });
+    $("videoBox").style.display = mode === "video" ? "" : "none";
+    $("promptBox").style.display = mode === "prompt" ? "" : "none";
   };
 });
 
-const drop = document.getElementById("drop");
-drop.onclick = () => document.getElementById("file").click();
+const drop = $("drop");
+drop.onclick = () => $("file").click();
+drop.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } };
 drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
 drop.ondragleave = () => drop.classList.remove("over");
 drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); pick(e.dataTransfer.files[0]); };
-document.getElementById("file").onchange = (e) => pick(e.target.files[0]);
+$("file").onchange = (e) => pick(e.target.files[0]);
 
 function pick(f) {
   if (!f) return;
+  if (!/\.(mp4|mov|mkv)$/i.test(f.name)) return error("仅支持 mp4、mov、mkv 视频");
+  if (f.size > 800 * 1024 * 1024) return error("视频不能超过 800 MB");
+  error("");
   file = f;
-  document.getElementById("fileName").textContent = f.name + " · " + (f.size / 1024 / 1024).toFixed(1) + " MB";
+  $("fileName").textContent = f.name + " · " + (f.size / 1024 / 1024).toFixed(1) + " MB";
 }
 
-const $ = (id) => document.getElementById(id);
 $("go").onclick = async () => {
-  $("err").style.display = "none";
-  if (mode === "video" && !file) { $("err").textContent = "请先选择一段视频"; $("err").style.display = "block"; return; }
-  if (mode === "prompt" && !$("prompt").value.trim()) { $("err").textContent = "请输入提示词"; $("err").style.display = "block"; return; }
+  error("");
+  if (mode === "video" && !file) return error("请先选择一段视频");
+  if (mode === "prompt" && !$("prompt").value.trim()) return error("请输入主题或文稿");
   $("go").disabled = true;
   $("prog").style.display = "block";
   $("result").style.display = "none";
+  $("review").style.display = "none";
   $("log").textContent = "";
 
   try {
     let body;
     if (mode === "video") {
       $("log").textContent = "上传中…\n";
-      const up = await fetch("/api/upload", { method: "PUT", body: file });
-      const uj = await up.json();
-      if (!uj.uploadId) throw new Error(uj.error || "上传失败");
-      uploadId = uj.uploadId;
-      body = { mode: "video", uploadId, name: file.name || "input.mp4" };
+      const up = await fetch("/api/upload", { method: "PUT", headers: { "X-File-Name": encodeURIComponent(file.name) }, body: file });
+      const uploaded = await jsonResponse(up);
+      body = { mode: "video", uploadId: uploaded.uploadId };
     } else {
       body = { mode: "prompt", prompt: $("prompt").value.trim() };
     }
     const res = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    const j = await res.json();
-    if (!j.id) throw new Error(j.error || "创建任务失败");
-    watch(j.id);
+    const job = await jsonResponse(res);
+    await refreshHistory();
+    selectJob(job.id);
   } catch (e) {
-    $("err").textContent = String(e.message || e);
-    $("err").style.display = "block";
+    error(String(e.message || e));
+  } finally {
     $("go").disabled = false;
   }
 };
 
 function finish(id, j) {
-  localStorage.removeItem("jobId");
-  $("go").disabled = false;
-  $("prog").style.display = "block";
   $("result").style.display = "block";
   $("player").src = `/api/jobs/${id}/video`;
   $("dl").href = `/api/jobs/${id}/video`;
   $("meta").textContent = "成片已生成" + (j.duration ? " · 时长约 " + Math.round(j.duration) + " 秒" : "");
-  $("result").scrollIntoView({ behavior: "smooth" });
+}
+
+async function showDraft(id) {
+  const { draft } = await jsonResponse(await fetch(`/api/jobs/${id}/draft`));
+  if (!draft || currentId !== id) return;
+  $("review").style.display = "block";
+  for (const [targetId, entries, key, label] of [
+    ["reviewScenes", draft.scenes, "title", "分镜标题"],
+    ["reviewCaptions", draft.captions, "text", "字幕"]
+  ]) {
+    const target = $(targetId);
+    target.replaceChildren();
+    entries.forEach((item, i) => {
+      const wrap = document.createElement("div");
+      wrap.className = "review-item";
+      const field = document.createElement("input");
+      field.type = "text";
+      field.value = item[key];
+      field.maxLength = key === "title" ? 40 : 100;
+      field.dataset.kind = key;
+      field.id = `${key}-${i}`;
+      const caption = document.createElement("label");
+      caption.htmlFor = field.id;
+      caption.textContent = `${label} ${i + 1} · ${Math.round(item.start)} 秒${item.type ? " · " + item.type : ""}`;
+      wrap.append(caption, field);
+      target.append(wrap);
+    });
+  }
+}
+
+$("approve").onclick = async () => {
+  if (!currentId) return;
+  $("approve").disabled = true;
+  error("");
+  const payload = {
+    scenes: [...$("reviewScenes").querySelectorAll("input")].map((field) => ({ title: field.value })),
+    captions: [...$("reviewCaptions").querySelectorAll("input")].map((field) => ({ text: field.value }))
+  };
+  try {
+    await jsonResponse(await fetch(`/api/jobs/${currentId}/approve`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+    }));
+    $("review").style.display = "none";
+    selectJob(currentId);
+  } catch (e) { error(String(e.message || e)); }
+  finally { $("approve").disabled = false; }
+};
+
+function showJob(id, j) {
+  if (currentId !== id) return;
+  $("prog").style.display = "block";
+    $("bar").style.width = j.progress + "%";
+    $("pct").textContent = j.progress + "%";
+  $("stage").textContent = j.stage;
+  const log = $("log");
+  log.textContent = j.log.join("\n");
+  log.scrollTop = log.scrollHeight;
+  if (j.status === "review") showDraft(id).catch((e) => error(e.message));
+  if (j.status === "done") finish(id, j);
+  if (j.status === "error") error("生成失败：" + (j.error || "未知错误"));
 }
 
 function watch(id) {
-  localStorage.setItem("jobId", id);
+  if (stream) stream.close();
+  if (retryTimer) clearTimeout(retryTimer);
   const es = new EventSource(`/api/jobs/${id}/stream`);
-  let logCount = 0;
-  es.onmessage = (ev) => {
-    const j = JSON.parse(ev.data);
-    $("bar").style.width = j.progress + "%";
-    $("pct").textContent = j.progress + "%";
-    $("stage").innerHTML = "<b>" + j.stage + "</b>";
-    if (j.log.length !== logCount) {
-      logCount = j.log.length;
-      const el = $("log");
-      el.textContent = j.log.join("\n");
-      el.scrollTop = el.scrollHeight;
-    }
-    if (j.status === "done") {
+  stream = es;
+  es.onmessage = async (event) => {
+    const job = JSON.parse(event.data);
+    retryCount = 0;
+    showJob(id, job);
+    if (["review", "done", "error"].includes(job.status)) {
       es.close();
-      finish(id, j);
-    }
-    if (j.status === "error") {
-      es.close();
-      localStorage.removeItem("jobId");
-      $("go").disabled = false;
-      $("err").textContent = "生成失败：" + (j.error || "未知错误");
-      $("err").style.display = "block";
+      await refreshHistory();
     }
   };
-  es.onerror = () => { es.close(); $("go").disabled = false; };
+  es.onerror = async () => {
+    es.close();
+    if (currentId !== id) return;
+    try {
+      const job = await jsonResponse(await fetch(`/api/jobs/${id}/json`));
+      showJob(id, job);
+      if (["review", "done", "error"].includes(job.status)) return refreshHistory();
+    } catch { /* 网络异常后有限重连 */ }
+    if (++retryCount <= 5) {
+      $("stage").textContent = `连接中断，正在重连（${retryCount}/5）`;
+      retryTimer = setTimeout(() => watch(id), Math.min(1000 * 2 ** retryCount, 10000));
+    } else {
+      error("进度连接已中断。请点击最近任务重新连接；后台任务可能仍在运行。");
+    }
+  };
 }
 
-// 刷新页面后自动接回未完成的任务（渲染要几分钟，允许离开页面）
-window.addEventListener("DOMContentLoaded", async () => {
-  const id = localStorage.getItem("jobId");
-  if (!id) return;
+async function selectJob(id) {
+  if (stream) { stream.close(); stream = null; }
+  if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+  currentId = id;
+  retryCount = 0;
+  error("");
+  $("review").style.display = "none";
+  $("result").style.display = "none";
   try {
-    const r = await fetch(`/api/jobs/${id}/json`);
-    if (!r.ok) throw new Error("gone");
-    const j = await r.json();
-    if (j.status === "done") return finish(id, j);
-    if (j.status === "error") { localStorage.removeItem("jobId"); return; }
-    $("prog").style.display = "block";
-    $("go").disabled = true;
-    watch(id);
-  } catch {
-    localStorage.removeItem("jobId");
+    const job = await jsonResponse(await fetch(`/api/jobs/${id}/json`));
+    showJob(id, job);
+    if (!["review", "done", "error"].includes(job.status)) watch(id);
+  } catch (e) { error(String(e.message || e)); }
+}
+
+async function refreshHistory() {
+  const { jobs } = await jsonResponse(await fetch("/api/jobs"));
+  const list = $("historyList");
+  list.replaceChildren();
+  $("history").style.display = jobs.length ? "block" : "none";
+  jobs.forEach((job) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "history-item";
+    const title = document.createElement("span");
+    title.textContent = job.name;
+    const detail = document.createElement("small");
+    detail.textContent = `${new Date(job.createdAt).toLocaleString()} · ${job.stage}`;
+    button.append(title, detail);
+    button.onclick = () => selectJob(job.id);
+    list.append(button);
+  });
+  return jobs;
+}
+
+window.addEventListener("DOMContentLoaded", async () => {
+  try {
+    const jobs = await refreshHistory();
+    if (jobs.length) selectJob(jobs[0].id);
+  } catch (e) {
+    error("无法读取任务列表：" + String(e.message || e));
   }
 });
 </script>

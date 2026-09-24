@@ -1,1 +1,1 @@
-{"name":"clip-agent","private":true,"type":"module","scripts":{"start":"node server.mjs"},"dependencies":{"opencc-js":"^1.4.2"}}
+{"name":"clip-agent","private":true,"type":"module","scripts":{"start":"node server.mjs","test":"node --test","doctor":"node tools/doctor.mjs"},"dependencies":{"opencc-js":"^1.4.2"}}

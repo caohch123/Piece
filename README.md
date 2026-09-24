@@ -1,20 +1,23 @@
 # Piece / 剪辑 Agent
 
-一个面向竖屏口播视频的自动剪辑原型：上传原始口播视频后，系统会完成语音转写、分镜规划、图形包装、字幕、音效和视频渲染，并在网页中提供预览与下载。
+一个面向竖屏口播视频的自动剪辑原型：上传原始口播视频后，系统会完成语音转写和分镜规划。确认标题与字幕后，再生成图形包装、字幕、音效和视频，并在网页中提供预览与下载。
 
 ## 当前能力
 
-- 上传 MP4、MOV、MKV 等视频素材
+- 上传 MP4、MOV、MKV 视频素材，最长 180 秒、不超过 800 MB，需包含音轨
 - 本地 Whisper 中文语音转写和词级时间戳
 - DeepSeek 分镜规划；未配置密钥时自动使用启发式规则
 - 多种信息图场景：开场、要点、步骤、对比、结构图、趋势图和结尾
 - 卡拉 OK 式字幕高亮、转场和提示音效
 - 输出 1080×1920 的 H.264 MP4
 - SSE 实时任务进度、日志、结果预览和下载
+- 待确认文案编辑、最近任务列表、服务重启后恢复待确认与已完成任务
+
+提示词入口目前生成**无旁白的字幕动画**，尚无 TTS 配音。
 
 ## 运行要求
 
-- Node.js 20+
+- Node.js 22+
 - FFmpeg 与 FFprobe
 - Whisper CLI 和本地 Whisper 模型
 - HyperFrames 运行所需的兼容浏览器
@@ -27,6 +30,7 @@ HYPERFRAMES_WHISPER_PATH=C:\path\to\whisper-cli.exe
 HF_WHISPER_MODEL=C:\path\to\ggml-small.bin
 DEEPSEEK_API_KEY=optional
 PORT=5173
+HOST=127.0.0.1
 ```
 
 未设置 `HF_WHISPER_MODEL` 时，程序会在用户目录下的 `.cache/hyperframes/whisper/models` 中查找模型。
@@ -35,10 +39,13 @@ PORT=5173
 
 ```bash
 npm install
+npm run doctor
 npm start
 ```
 
 打开 <http://localhost:5173>。
+
+运行 `npm test` 可执行接口与模板安全回归。服务默认仅监听本机；任务、上传素材和会话密钥保存在 `workspace/`。未关联任务的临时上传会在 24 小时后清理；成片目前不会自动删除。同一浏览器可查看自己的任务，服务重启后待确认与已完成任务可恢复，处理中任务会标记为中断。当前会话隔离只适用于本地试用，公开部署仍需正式账号与权限系统。
 
 ## 目录结构
 
@@ -55,4 +62,4 @@ PRODUCT_REPORT.md 产品评审报告
 
 ## 产品状态
 
-当前版本属于可演示的 MVP / 技术闭环原型，适合本地验证和小范围试用。公开部署前仍需补齐任务持久化、身份与文件隔离、上传校验、错误恢复和成片质量门禁。详细评审见 [PRODUCT_REPORT.md](./PRODUCT_REPORT.md)。
+当前版本属于可演示的 MVP / 技术闭环原型，适合本地验证和小范围试用。升级进度见 [TODO.md](./TODO.md)，初版评审见 [PRODUCT_REPORT.md](./PRODUCT_REPORT.md)。
